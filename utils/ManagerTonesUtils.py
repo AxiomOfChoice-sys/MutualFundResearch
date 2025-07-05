@@ -1,26 +1,31 @@
 import jieba
 import pandas as pd
+from collections import Counter
 
 def get_view_data(content_data):
     content_data = content_data.replace('\s|\\t', '', regex = True)
-    view1 = content_data.str.extractall(r'简要展望((?:(?!\.\.\.|\u2026).)*?。)\d').unstack('match')
-    # view1 = content_data.str.extractall(r'简要展望(.+。)\d').unstack('match')
+    view1 = content_data.str.extractall(r'简要展望((?:(?!\.\.\.|\u2026).)*?)管理人').unstack('match')
     if view1.shape[1] > 0:
         temp = view1.iloc[:, 1]
         temp = temp.fillna(view1.iloc[:, 0])
         view1 = temp.rename('view1')
-    view2 = content_data.str.extractall('展望([^(\.\.)]+)\d.').unstack('match')
+    view2 = content_data.str.extractall(r'展望((?:(?!\.\.\.|\u2026).)*?)管理人').unstack('match')
     if view2.shape[1] > 0:
         temp = view2.iloc[:, 1]
         temp = temp.fillna(view2.iloc[:, 0])
         view2 = temp.rename('view2')
-    view3 = content_data.str.extractall('展望([^(\.\.)]+)\d.').unstack('match')
+    view3 = content_data.str.extractall(r'认为((?:(?!\.\.\.|\u2026).)*?)管理人').unstack('match')
     if view3.shape[1] > 0:
         temp = view3.iloc[:, 1]
         temp = temp.fillna(view3.iloc[:, 0])
         view3 = temp.rename('view3')
+    view4 = content_data.str.extractall(r'运作分析((?:(?!\.\.\.|\u2026).)*?)报告期').unstack('match')
+    if view4.shape[1] > 0:
+        temp = view4.iloc[:, 1]
+        temp = temp.fillna(view4.iloc[:, 0])
+        view4 = temp.rename('view4')
     index = content_data.index
-    view = view1.reindex(index).fillna(view2.reindex(index)).fillna(view3.reindex(index))
+    view = view1.reindex(index).fillna(view2.reindex(index)).fillna(view3.reindex(index)).fillna(view4.reindex(index))
     view4 = view.str.extract('(.+)§').iloc[:, 0]
     view = view4.fillna(view)
     return view
@@ -68,10 +73,13 @@ def fill_tone(fund_returns_daily, tone_factor):
 
 def tone_group_returns(fund_nav_daily, tone_factor, freq = 'QE'):
     combined_data = pd.concat([fund_nav_daily, tone_factor], axis = 1)
-    dates = combined_data.index.get_level_values('date').unique()
-    dates = pd.Series(dates, index = dates)
-    used_dates = dates.sort_index().resample(freq).last()
-    sub_data = combined_data[combined_data.index.get_level_values('date').isin(used_dates)]
+    if freq is not None:
+        dates = combined_data.index.get_level_values('date').unique()
+        dates = pd.Series(dates, index = dates)
+        used_dates = dates.sort_index().resample(freq).last()
+        sub_data = combined_data[combined_data.index.get_level_values('date').isin(used_dates)]
+    else:
+        sub_data = combined_data
     sub_data['group'] = combined_data['tones_factor'].groupby('date').rank(pct = True) * 100 // 20 + 1
     sub_data['group'] = sub_data['group'].mask(sub_data['group'] == 6, 5)
     sub_data = sub_data.sort_index()
@@ -79,4 +87,25 @@ def tone_group_returns(fund_nav_daily, tone_factor, freq = 'QE'):
     sub_data['returns_next'] = sub_data['returns'].groupby('code').shift(-1)
     group_returns = sub_data.groupby(['group', 'date'])['returns_next'].mean().unstack('group').sort_index()
     return group_returns
+
+def get_all_words(views, dictionary):
+    pos_count = Counter()
+    neg_count = Counter()
+    stop_count = Counter()
+    for view_str in views:
+        if not isinstance(view_str, str):continue
+        words_cut = jieba.cut(view_str)
+        pos_list = []
+        neg_list = []
+        stop_list = []
+        for word in words_cut:
+            if word in dictionary['positive']:
+                pos_list.append(word)
+            elif word in dictionary['negative']:
+                neg_list.append(word)
+            else:
+                stop_list.append(word)
+        pos_count.update(Counter(pos_list))
+        neg_count.update(Counter(neg_list))
+        stop_count.update(Counter(stop_list))
 
