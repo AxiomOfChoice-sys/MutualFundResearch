@@ -165,6 +165,26 @@ def get_alpha(fund_returns, factors_returns_daily):
     alphas.name = 'alpha'
     return alphas
 
+def get_betas(fund_returns, factors_returns_daily):
+    factors_net_values = (1 + factors_returns_daily.sort_index()).cumprod()
+    fund_returns = pd.DataFrame(fund_returns)
+    fund_returns.columns = ['fund_returns']
+    combined_data = fund_returns.join(factors_net_values).sort_index()
+    factors_columns = factors_returns_daily.columns
+    for c in factors_columns:
+        combined_data[c] = combined_data[c].groupby('code').pct_change()
+
+    def get_rolling_beta(df):
+        if len(df) < 60: return
+        y = df['fund_returns']
+        X = df[factors_columns]
+        X = sm.add_constant(X)
+        model = RollingOLS(y, X, window=60).fit()
+        return model.params
+
+    betas = combined_data.groupby('code').apply(get_rolling_beta).droplevel(0)
+    return betas[factors_columns]
+
 def get_TNA_change(fund_nvs, fund_returns):
     return fund_nvs - (fund_nvs * fund_returns).sort_index().groupby('code').shift(1)
 

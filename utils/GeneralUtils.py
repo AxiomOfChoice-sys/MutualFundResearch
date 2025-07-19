@@ -37,3 +37,15 @@ def get_after_start_nav(codes_data, nav_data):
         nav_data_list.append(group)
     nav_data = pd.concat(nav_data_list).reset_index().set_index(['code', 'date']).sort_index()
     return nav_data
+
+def get_funds_age(codes_data, infos):
+    combined_data = infos.join(codes_data.set_index('code')['start_date'])
+    combined_data['age'] = combined_data.index.get_level_values('date') - combined_data['start_date']
+    combined_data['age'] = combined_data['age'].apply(lambda x:x.days / 365.0)
+    combined_data = combined_data.drop('start_date', axis = 1)
+    return combined_data
+
+def drop_small_and_young(data):
+    data = data[data['size'] >= 1]
+    data = data[data['age'] >= 1]
+    return data
